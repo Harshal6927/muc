@@ -19,7 +19,7 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 - **Python 3.13** or higher
 - **uv** or **pip** for package management
 
-### 2. Virtual Audio Cable ⚠️
+### 2. Virtual Audio Cable
 **CRITICAL**: You need a virtual audio device to route audio to your microphone.
 
 **Recommended: VB-Cable (Free)**
@@ -30,37 +30,18 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
    - `CABLE Input` - Where your soundboard outputs audio
    - `CABLE Output` - What your game reads as a microphone
 
-### 3. System Audio Libraries
-
-**Windows:**
-The Python packages may require system audio libraries. If you encounter errors:
-```powershell
-# Using Chocolatey
-choco install portaudio
-
-# Or download manually from: http://www.portaudio.com/
-```
-
 ## 🚀 Installation
 
 ### Quick Start
 
-1. **Clone this repository:**
+1. **Install via uv or pip:**
    ```bash
-   git clone https://github.com/yourusername/mu.git
-   cd mu
+   uv add mu
+   # optional: with yt-dlp for downloading audio
+   uv add mu[yt-dlp]
    ```
 
-2. **Install dependencies:**
-   ```bash
-   # Using uv (recommended)
-   uv sync
-
-   # Or using pip
-   pip install -e .
-   ```
-
-3. **Add your audio files:**
+2. **Add your audio files:**
    - Place audio files (MP3, WAV, OGG, FLAC, M4A) in the `sounds/` directory
    - Organize in subdirectories if desired
    - The app automatically scans and loads all audio files
@@ -123,7 +104,7 @@ mu listen         # Start hotkey listener (press ESC to stop)
 mu interactive    # Launch full interactive menu
 
 # Help
-mu --help         # Show all commands with beautiful help
+mu --help         # Show all commands
 ```
 
 ### Quick Workflow
@@ -218,8 +199,8 @@ The app recursively scans all subdirectories.
 ### Getting Audio Files
 
 ```bash
-# Download from YouTube (uses yt-dlp in dev dependencies)
-uv run yt-dlp -x --audio-format wav "https://youtube.com/watch?v=..."
+# Download from YouTube (uses yt-dlp if installed)
+yt-dlp -x --audio-format wav "https://youtube.com/watch?v=..."
 
 # The file will be saved in your current directory
 # Then move it to sounds/
@@ -248,21 +229,21 @@ mu setup
    mu play test-sound
    ```
 
-2. **Volume Control**: 
+2. **Volume Control**:
    - Adjust Windows master volume
    - Use audio editing software to normalize clips
    - Set in-game voice volume appropriately
 
-3. **Quick Access**: 
+3. **Quick Access**:
    - Keep a terminal with `mu listen` running
    - Alt-tab is instant with hotkeys
    - Or use a second monitor
 
-4. **Push-to-Talk**: 
+4. **Push-to-Talk**:
    - If your game uses PTT, you'll need to hold it while playing sounds
    - Or configure the game to use voice activation
 
-5. **Be Respectful**: 
+5. **Be Respectful**:
    - Don't spam sounds excessively
    - Use appropriate audio in competitive matches
    - Some communities have rules about soundboards
@@ -285,15 +266,6 @@ mu setup  # Run again after restart
 ```bash
 mu devices  # Verify device IDs
 mu setup    # Reconfigure if needed
-```
-
-### "Import errors" or "Module not found"
-```bash
-# Reinstall dependencies
-uv sync
-
-# Or with pip
-pip install --upgrade sounddevice soundfile numpy pynput rich-click
 ```
 
 ### "Audio plays on my speakers, not through mic"
@@ -424,4 +396,4 @@ This is a personal project, but contributions are welcome!
 
 ## 📄 License
 
-This project is provided as-is for personal and educational use.
+This project is provided as-is for personal and educational use only. See [LICENSE](https://github.com/Harshal6927/mu?tab=Apache-2.0-1-ov-file) for details.

@@ -1,3 +1,4 @@
+# Copyright (c) 2025. All rights reserved.
 """Configuration management for mu soundboard."""
 
 import json
@@ -7,7 +8,8 @@ from pathlib import Path
 class Config:
     """Manages application configuration."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize the Config with default values and load existing config."""
         self.config_file = Path.home() / ".mu" / "config.json"
         self.sounds_dir = Path.cwd() / "sounds"
         self.output_device_id: int | None = None
@@ -15,11 +17,11 @@ class Config:
         # Load existing config if it exists
         self.load()
 
-    def load(self):
+    def load(self) -> None:
         """Load configuration from file."""
         if self.config_file.exists():
             try:
-                with open(self.config_file, "r") as f:
+                with self.config_file.open(encoding="utf-8") as f:
                     data = json.load(f)
                     self.output_device_id = data.get("output_device_id")
                     if "sounds_dir" in data:
@@ -27,7 +29,7 @@ class Config:
             except (json.JSONDecodeError, OSError):
                 pass  # Use defaults
 
-    def save(self):
+    def save(self) -> None:
         """Save configuration to file."""
         self.config_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -36,5 +38,5 @@ class Config:
             "sounds_dir": str(self.sounds_dir),
         }
 
-        with open(self.config_file, "w") as f:
+        with self.config_file.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)

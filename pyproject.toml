@@ -18,6 +18,7 @@ yt-dlp = ["yt-dlp>=2025.11.12"]
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.4.0",
     "yt-dlp>=2025.11.12",
 ]
 
@@ -30,3 +31,6 @@ requires = ["hatchling"]
 
 [project.scripts]
 mu = "src.cli:main"
+
+[tool.ruff]
+line-length = 120
