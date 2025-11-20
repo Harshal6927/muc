@@ -24,7 +24,7 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 
 **Recommended: VB-Cable (Free)**
 1. Download from: https://vb-audio.com/Cable/
-2. Install the driver
+2. Install the driver with admin privilege
 3. **Restart your computer** (required!)
 4. This creates:
    - `CABLE Input` - Where your soundboard outputs audio
