@@ -1,4 +1,4 @@
-# MU Soundboard 🎵🎮
+# MUC Soundboard 🎵🎮
 
 Play audio files through your microphone in multiplayer games like CS, Battlefield, and COD using hotkeys. Built with Python and Rich for a beautiful CLI experience!
 
@@ -10,7 +10,7 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 - 🎛️ **Multiple formats** - Supports WAV, MP3, OGG, FLAC, M4A
 - 🔊 **Auto-detection** - Finds VB-Cable and virtual audio devices automatically
 - 📁 **Organized library** - Subdirectory support for sound organization
-- ⚙️ **Persistent config** - Saves your settings to `~/.mu/config.json`
+- ⚙️ **Persistent config** - Saves your settings to `~/.muc/config.json`
 - 🎮 **Gaming ready** - Perfect for CS, Battlefield, COD, and more!
 
 ## 📋 Prerequisites
@@ -36,9 +36,9 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 
 1. **Install via uv or pip:**
    ```bash
-   uv add mu
+   uv add muc
    # optional: with yt-dlp for downloading audio
-   uv add mu[yt-dlp]
+   uv add muc[yt-dlp]
    ```
 
 2. **Add your audio files:**
@@ -63,14 +63,14 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 ### Step 2: Run Setup Wizard
 
 ```bash
-mu setup
+muc setup
 ```
 
 The setup wizard will:
 1. 📋 List all available audio devices in a beautiful table
 2. 🔍 Auto-detect VB-Cable or similar virtual devices
 3. ✓ Let you confirm or manually select the output device
-4. 💾 Save your configuration to `~/.mu/config.json`
+4. 💾 Save your configuration to `~/.muc/config.json`
 
 **IMPORTANT**: Select `CABLE Input` as the output device, not `CABLE Output`.
 
@@ -84,49 +84,49 @@ CABLE Output ← Game reads FROM here
 
 ### CLI Commands
 
-MU provides a modern CLI with multiple commands:
+MUC provides a modern CLI with multiple commands:
 
 ```bash
 # Setup and configuration
-mu setup          # Run setup wizard
-mu devices        # List all audio devices
+muc setup          # Run setup wizard
+muc devices        # List all audio devices
 
 # Sound management
-mu sounds         # List available sounds in your library
-mu play [name]    # Play a specific sound (prompts if no name)
-mu stop           # Stop currently playing sound
+muc sounds         # List available sounds in your library
+muc play [name]    # Play a specific sound (prompts if no name)
+muc stop           # Stop currently playing sound
 
 # Hotkey control
-mu hotkeys        # Show hotkey bindings (F1-F10)
-mu listen         # Start hotkey listener (press ESC to stop)
+muc hotkeys        # Show hotkey bindings (F1-F10)
+muc listen         # Start hotkey listener (press ESC to stop)
 
 # Interactive mode
-mu interactive    # Launch full interactive menu
+muc interactive    # Launch full interactive menu
 
 # Help
-mu --help         # Show all commands
+muc --help         # Show all commands
 ```
 
 ### Quick Workflow
 
 1. **First time setup:**
    ```bash
-   mu setup
+   muc setup
    ```
 
 2. **Check your sounds:**
    ```bash
-   mu sounds
+   muc sounds
    ```
 
 3. **Test a sound:**
    ```bash
-   mu play rickroll
+   muc play rickroll
    ```
 
 4. **Start gaming with hotkeys:**
    ```bash
-   mu listen
+   muc listen
    ```
    - Press F1-F10 to play sounds
    - Press ESC to stop
@@ -141,14 +141,14 @@ The first 10 sounds (alphabetically) are automatically mapped to:
 
 View bindings:
 ```bash
-mu hotkeys
+muc hotkeys
 ```
 
 ### Interactive Menu Mode
 
 For a full-featured text menu:
 ```bash
-mu interactive
+muc interactive
 ```
 
 Menu options:
@@ -208,25 +208,25 @@ yt-dlp -x --audio-format wav "https://youtube.com/watch?v=..."
 
 ## 🔧 Configuration
 
-Configuration is automatically saved to `~/.mu/config.json`:
+Configuration is automatically saved to `~/.muc/config.json`:
 
 ```json
 {
   "output_device_id": 6,
-  "sounds_dir": "C:/path/to/mu/sounds"
+  "sounds_dir": "C:/path/to/muc/sounds"
 }
 ```
 
 You can manually edit this file or reconfigure using:
 ```bash
-mu setup
+muc setup
 ```
 
 ## 🎯 Gaming Tips
 
 1. **Test First**: Always test sounds before joining a match
    ```bash
-   mu play test-sound
+   muc play test-sound
    ```
 
 2. **Volume Control**:
@@ -235,7 +235,7 @@ mu setup
    - Set in-game voice volume appropriately
 
 3. **Quick Access**:
-   - Keep a terminal with `mu listen` running
+   - Keep a terminal with `muc listen` running
    - Alt-tab is instant with hotkeys
    - Or use a second monitor
 
@@ -253,19 +253,19 @@ mu setup
 ### "No virtual audio cable detected"
 **Solution**: Install VB-Cable and **restart your computer**
 ```bash
-mu setup  # Run again after restart
+muc setup  # Run again after restart
 ```
 
 ### "Teammates can't hear the audio"
 **Check**:
 1. Game microphone set to `CABLE Output` ✓
 2. Soundboard output set to `CABLE Input` ✓
-3. Test with: `mu play test-sound`
+3. Test with: `muc play test-sound`
 
 **Fix**:
 ```bash
-mu devices  # Verify device IDs
-mu setup    # Reconfigure if needed
+muc devices  # Verify device IDs
+muc setup    # Reconfigure if needed
 ```
 
 ### "Audio plays on my speakers, not through mic"
@@ -273,8 +273,8 @@ mu setup    # Reconfigure if needed
 
 **Solution**:
 ```bash
-mu devices  # Find CABLE Input ID
-mu setup    # Select correct device
+muc devices  # Find CABLE Input ID
+muc setup    # Select correct device
 ```
 
 Remember: **CABLE Input** (not Output) for soundboard output!
@@ -289,7 +289,7 @@ Remember: **CABLE Input** (not Output) for soundboard output!
 ```bash
 # Run as administrator (Windows)
 # Or try interactive mode
-mu interactive  # Then select option 4
+muc interactive  # Then select option 4
 ```
 
 ### "Audio quality is poor"
@@ -300,14 +300,14 @@ mu interactive  # Then select option 4
 4. Check VB-Cable settings in Windows Sound Control Panel
 
 ### "Configuration not saving"
-**Check**: Permissions for `~/.mu/` directory
+**Check**: Permissions for `~/.muc/` directory
 
 ```powershell
 # Windows - check directory
-ls ~\.mu
+ls ~\.muc
 
 # If missing, create manually
-mkdir ~\.mu
+mkdir ~\.muc
 ```
 
 ## 🏗️ Architecture
@@ -349,7 +349,7 @@ This project implements a clean software architecture:
 ## 📁 Project Structure
 
 ```
-mu/
+muc/
 ├── src/
 │   ├── __init__.py          # Package initialization
 │   ├── cli.py               # Rich-click CLI commands
@@ -396,4 +396,4 @@ This is a personal project, but contributions are welcome!
 
 ## 📄 License
 
-This project is provided as-is for personal and educational use only. See [LICENSE](https://github.com/Harshal6927/mu?tab=Apache-2.0-1-ov-file) for details.
+This project is provided as-is for personal and educational use only. See [LICENSE](https://github.com/Harshal6927/muc?tab=Apache-2.0-1-ov-file) for details.

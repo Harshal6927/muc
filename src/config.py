@@ -1,5 +1,5 @@
 # Copyright (c) 2025. All rights reserved.
-"""Configuration management for mu soundboard."""
+"""Configuration management for muc soundboard."""
 
 import json
 from pathlib import Path
@@ -10,7 +10,7 @@ class Config:
 
     def __init__(self) -> None:
         """Initialize the Config with default values and load existing config."""
-        self.config_file = Path.home() / ".mu" / "config.json"
+        self.config_file = Path.home() / ".muc" / "config.json"
         self.sounds_dir = Path.cwd() / "sounds"
         self.output_device_id: int | None = None
 

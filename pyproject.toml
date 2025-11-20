@@ -1,5 +1,5 @@
 [project]
-name = "mu"
+name = "muc"
 authors = [{ name = "Harshal Laheri", email = "harshal@harshallaheri.me" }]
 version = "0.1.0"
 description = "Play audio through your microphone in games using hotkeys"
@@ -17,10 +17,7 @@ dependencies = [
 yt-dlp = ["yt-dlp>=2025.11.12"]
 
 [dependency-groups]
-dev = [
-    "pre-commit>=4.4.0",
-    "yt-dlp>=2025.11.12",
-]
+dev = ["pre-commit>=4.4.0", "yt-dlp>=2025.11.12"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
@@ -30,11 +27,11 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [project.scripts]
-mu = "src.cli:main"
+muc = "src.cli:main"
 
 [tool.ruff]
 line-length = 120
 
 [project.urls]
-Homepage = "https://github.com/harshal6927/mu"
+Homepage = "https://github.com/harshal6927/muc"
 Website = "https://harshallaheri.me/"

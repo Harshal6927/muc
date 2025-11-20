@@ -42,9 +42,9 @@ def get_soundboard() -> tuple[Soundboard, AudioManager]:
 
 @click.group(invoke_without_command=True)
 @click.pass_context
-@click.version_option(version="0.1.0", prog_name="mu")
+@click.version_option(version="0.1.0", prog_name="muc")
 def cli(ctx: click.Context) -> None:
-    """[bold cyan]MU Soundboard[/bold cyan].
+    """[bold cyan]MUC Soundboard[/bold cyan].
 
     Play audio files through your microphone in games using hotkeys.
     Perfect for CS, Battlefield, COD, and more! 🎮🎵
@@ -52,9 +52,9 @@ def cli(ctx: click.Context) -> None:
     if ctx.invoked_subcommand is None:
         console.print(
             Panel.fit(
-                "[bold cyan]MU Soundboard[/bold cyan]\n"
+                "[bold cyan]MUC Soundboard[/bold cyan]\n"
                 "Play audio through your microphone in games!\n\n"
-                "Run [bold]mu --help[/bold] to see all commands.",
+                "Run [bold]muc --help[/bold] to see all commands.",
                 border_style="cyan",
             ),
         )
