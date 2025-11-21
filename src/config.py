@@ -13,6 +13,7 @@ class Config:
         self.config_file = Path.home() / ".muc" / "config.json"
         self.sounds_dir = Path.cwd() / "sounds"
         self.output_device_id: int | None = None
+        self.volume: float = 1.0
 
         # Load existing config if it exists
         self.load()
@@ -24,6 +25,7 @@ class Config:
                 with self.config_file.open(encoding="utf-8") as f:
                     data = json.load(f)
                     self.output_device_id = data.get("output_device_id")
+                    self.volume = data.get("volume", 1.0)
                     if "sounds_dir" in data:
                         self.sounds_dir = Path(data["sounds_dir"])
             except (json.JSONDecodeError, OSError):
@@ -36,6 +38,7 @@ class Config:
         data = {
             "output_device_id": self.output_device_id,
             "sounds_dir": str(self.sounds_dir),
+            "volume": self.volume,
         }
 
         with self.config_file.open("w", encoding="utf-8") as f:

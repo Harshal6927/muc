@@ -36,6 +36,9 @@ def get_soundboard() -> tuple[Soundboard, AudioManager]:
     if config.output_device_id is not None:
         audio_manager.set_output_device(config.output_device_id)
 
+    # Set volume from config (silently, without printing)
+    audio_manager.volume = config.volume
+
     soundboard = Soundboard(audio_manager, config.sounds_dir, console)
     return soundboard, audio_manager
 
@@ -203,6 +206,25 @@ def stop() -> None:
     console.print("[yellow]■[/yellow] Stopped current sound.")
 
 
+@cli.command()
+@click.argument("level", type=click.FloatRange(0.0, 1.0), required=False)
+def volume(level: float | None) -> None:
+    """Set or display the playback volume (0.0 to 1.0).
+
+    Examples: mu volume 0.5 (set to 50%), mu volume (show current).
+    """
+    _, audio_manager = get_soundboard()
+    if level is None:
+        percentage = int(audio_manager.volume * 100)
+        console.print(f"[cyan]Current volume:[/cyan] {percentage}%")
+    else:
+        audio_manager.set_volume(level)
+        config = Config()
+        config.volume = audio_manager.volume
+        config.save()
+        console.print("[green]✓[/green] Volume saved!")
+
+
 def _handle_play_sound(soundboard: Soundboard) -> None:
     """Handle playing a sound by name."""
     sound_name = click.prompt("Enter sound name")
@@ -237,6 +259,20 @@ def _handle_change_device(audio_manager: AudioManager) -> None:
         config.save()
 
 
+def _handle_volume(audio_manager: AudioManager) -> None:
+    """Handle volume adjustment."""
+    percentage = int(audio_manager.volume * 100)
+    console.print(f"[cyan]Current volume:[/cyan] {percentage}%")
+    volume_input = click.prompt(
+        "Enter volume level (0-100)",
+        type=click.IntRange(0, 100),
+    )
+    audio_manager.set_volume(volume_input / 100.0)
+    config = Config()
+    config.volume = audio_manager.volume
+    config.save()
+
+
 def _show_menu() -> None:
     """Display the interactive menu."""
     console.print("\n[bold cyan]═══ Soundboard Menu ═══[/bold cyan]")
@@ -247,6 +283,7 @@ def _show_menu() -> None:
     console.print("5. Stop current sound")
     console.print("6. List audio devices")
     console.print("7. Change output device")
+    console.print("8. Adjust volume")
     console.print("0. Exit")
 
 
@@ -283,6 +320,8 @@ def interactive() -> None:  # noqa: C901
             audio_manager.print_devices()
         elif choice == "7":
             _handle_change_device(audio_manager)
+        elif choice == "8":
+            _handle_volume(audio_manager)
         elif choice == "0":
             console.print("\n[cyan]Goodbye! 👋[/cyan]")
             break

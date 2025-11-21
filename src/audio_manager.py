@@ -23,6 +23,7 @@ class AudioManager:
         self.console = console or Console()
         self.current_stream = None
         self.output_device_id: int | None = None
+        self.volume: float = 1.0
 
     def list_devices(self):  # noqa: ANN201, PLR6301
         """List all available audio devices.
@@ -104,6 +105,17 @@ class AudioManager:
         self.console.print(f"[red]✗[/red] Invalid device ID: {device_id}")
         return False
 
+    def set_volume(self, volume: float) -> None:
+        """Set the playback volume level.
+
+        Args:
+            volume: Volume level from 0.0 (mute) to 1.0 (full volume)
+
+        """
+        self.volume = max(0.0, min(1.0, volume))  # Clamp between 0 and 1
+        percentage = int(self.volume * 100)
+        self.console.print(f"[cyan]♪[/cyan] Volume set to {percentage}%")
+
     def play_audio(self, audio_file: Path, *, blocking: bool = False) -> bool:
         """Play an audio file through the selected output device.
 
@@ -148,6 +160,9 @@ class AudioManager:
             elif data.shape[1] > max_channels:
                 # Take only the channels we need
                 data = data[:, :max_channels]
+
+            # Apply volume scaling
+            data *= self.volume
 
             sd.play(data, samplerate, device=self.output_device_id)
 
