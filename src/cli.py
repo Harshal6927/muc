@@ -132,7 +132,7 @@ def play(sound_name: str | None) -> None:
         soundboard.list_sounds()
         sound_name = str(click.prompt("Enter sound name to play", type=str))
 
-    soundboard.play_sound(sound_name)
+    soundboard.play_sound(sound_name, blocking=True)
 
 
 @cli.command()
