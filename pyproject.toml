@@ -1,23 +1,24 @@
 [project]
-name = "muc"
 authors = [{ name = "Harshal Laheri", email = "harshal@harshallaheri.me" }]
-version = "0.2.0"
+dependencies = ["sounddevice>=0.4.6", "soundfile>=0.12.1", "numpy>=1.24.0", "pynput>=1.7.6", "rich-click>=1.9.4"]
 description = "Play audio through your microphone in games using hotkeys"
+name = "muc"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "sounddevice>=0.4.6",
-    "soundfile>=0.12.1",
-    "numpy>=1.24.0",
-    "pynput>=1.7.6",
-    "rich-click>=1.9.4",
-]
+version = "0.2.0"
 
 [project.optional-dependencies]
 yt-dlp = ["yt-dlp>=2025.11.12"]
 
 [dependency-groups]
-dev = ["pre-commit>=4.4.0", "yt-dlp>=2025.11.12"]
+dev = [
+    "pre-commit>=4.4.0",
+    "yt-dlp>=2025.11.12",
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
+    "coverage>=7.12.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
@@ -31,6 +32,28 @@ muc = "src.cli:main"
 
 [tool.ruff]
 line-length = 120
+lint.ignore = ["S101", "PLR6301", "PLR2004", "SLF001"]
+
+[tool.pytest.ini_options]
+addopts = ["-v", "--tb=short", "--strict-markers", "-ra"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+python_classes = ["Test*"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+omit = ["tests/*", "*/__pycache__/*"]
+source = ["src"]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+fail_under = 65
+show_missing = true
 
 [project.urls]
 Homepage = "https://github.com/harshal6927/muc"

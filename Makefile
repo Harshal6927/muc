@@ -1,10 +1,25 @@
-.PHONY: lint release
+.PHONY: lint release test test-fast coverage
 
 lint:
 	@echo "Running linters... 🔄"
 	pre-commit install
 	pre-commit run -a
 	@echo "Linters completed. ✅"
+
+test:
+	@echo "Running tests... 🧪"
+	uv run pytest tests/ -v
+	@echo "Tests completed. ✅"
+
+# test-fast:
+# 	@echo "Running fast tests... ⚡"
+# 	uv run pytest tests/ -v -m "not slow"
+# 	@echo "Fast tests completed. ✅"
+
+coverage:
+	@echo "Running tests with coverage... 📊"
+	uv run pytest tests/ --cov=src --cov-report=html --cov-report=term-missing
+	@echo "Coverage report generated in htmlcov/ ✅"
 
 release:
 	@python tools/prepare_release.py
