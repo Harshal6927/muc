@@ -8,6 +8,12 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+)
 from rich.table import Table
 
 from .exceptions import (
@@ -163,13 +169,70 @@ class AudioManager:
 
         return data
 
-    def play_audio(self, audio_file: Path, *, blocking: bool = False, sound_volume: float = 1.0) -> bool:
+    def _load_and_prepare_audio(
+        self,
+        audio_file: Path,
+        sound_volume: float,
+    ) -> tuple[np.ndarray, int] | None:
+        """Load and prepare audio data for playback.
+
+        Args:
+            audio_file: Path to the audio file
+            sound_volume: Per-sound volume multiplier
+
+        Returns:
+            Tuple of (data, samplerate) or None if loading failed
+
+        """
+        try:
+            data, samplerate = sf.read(str(audio_file))  # pyright: ignore[reportGeneralTypeIssues]
+
+        except sf.LibsndfileError as e:
+            logger.exception("Failed to read audio file")
+            error = AudioFileCorruptedError(
+                f"Cannot read audio file: {audio_file.name}",
+                details={"path": str(audio_file), "error": str(e)},
+            )
+            self.console.print(f"[red]✗[/red] {error.message}")
+            self.console.print(f"[dim]💡 {error.suggestion}[/dim]")
+            return None
+
+        # Ensure data is in the correct format
+        if len(data.shape) == 1:
+            data = data.reshape(-1, 1)
+
+        # Get device info to match channels
+        device_info = sd.query_devices(self.output_device_id)
+        max_channels = device_info["max_output_channels"]  # pyright: ignore[reportCallIssue, reportArgumentType]
+
+        logger.debug(
+            f"Audio info: duration={len(data) / samplerate:.2f}s, rate={samplerate}, channels={data.shape[1]}",
+        )
+
+        # Adjust channels if needed
+        data = self._adjust_channels(data, max_channels)
+
+        # Apply combined volume scaling: global x sound-specific
+        final_volume = self.volume * sound_volume
+        data *= final_volume
+
+        return data, samplerate
+
+    def play_audio(
+        self,
+        audio_file: Path,
+        *,
+        blocking: bool = False,
+        sound_volume: float = 1.0,
+        show_progress: bool = True,
+    ) -> bool:
         """Play an audio file through the selected output device.
 
         Args:
             audio_file: Path to the audio file
             blocking: If True, wait for playback to finish
             sound_volume: Per-sound volume multiplier (0.0 to 2.0), combined with global volume
+            show_progress: If True and blocking, show a progress bar
 
         Returns:
             True if playback started successfully, False otherwise.
@@ -196,52 +259,32 @@ class AudioManager:
             self.console.print(f"[dim]💡 {e.suggestion}[/dim]")
             return False
 
+        # Stop any currently playing audio
+        self.stop_audio()
+
+        logger.debug(f"Loading audio file: {audio_file}")
+
+        # Load and prepare audio
+        result = self._load_and_prepare_audio(audio_file, sound_volume)
+        if result is None:
+            return False
+        data, samplerate = result
+
         try:
-            # Stop any currently playing audio
-            self.stop_audio()
-
-            logger.debug(f"Loading audio file: {audio_file}")
-
-            # Load and play the audio file
-            data, samplerate = sf.read(str(audio_file))  # pyright: ignore[reportGeneralTypeIssues]
-
-            # Ensure data is in the correct format
-            if len(data.shape) == 1:
-                # Mono audio
-                data = data.reshape(-1, 1)
-
-            # Get device info to match channels
-            device_info = sd.query_devices(self.output_device_id)
-            max_channels = device_info["max_output_channels"]  # pyright: ignore[reportCallIssue, reportArgumentType]
-
-            logger.debug(
-                f"Audio info: duration={len(data) / samplerate:.2f}s, rate={samplerate}, channels={data.shape[1]}",
-            )
-
-            # Adjust channels if needed
-            data = self._adjust_channels(data, max_channels)
-
-            # Apply combined volume scaling: global x sound-specific
-            final_volume = self.volume * sound_volume
-            data *= final_volume
-
             logger.debug(f"Starting playback to device {self.output_device_id}")
             sd.play(data, samplerate, device=self.output_device_id)
 
             if blocking:
+                # Calculate duration for progress bar
+                duration_seconds = len(data) / samplerate
+
+                if show_progress and self.console.is_terminal:
+                    return self._show_progress(audio_file.name, duration_seconds)
+
                 # Use polling loop instead of sd.wait() to allow KeyboardInterrupt
                 while sd.get_stream() and sd.get_stream().active:
                     time.sleep(0.1)
 
-        except sf.LibsndfileError as e:
-            logger.exception("Failed to read audio file")
-            error = AudioFileCorruptedError(
-                f"Cannot read audio file: {audio_file.name}",
-                details={"path": str(audio_file), "error": str(e)},
-            )
-            self.console.print(f"[red]✗[/red] {error.message}")
-            self.console.print(f"[dim]💡 {error.suggestion}[/dim]")
-            return False
         except sd.PortAudioError as e:
             # Device disconnection or error during playback
             if "device" in str(e).lower() or "stream" in str(e).lower():
@@ -263,6 +306,78 @@ class AudioManager:
                 f"[green]▶[/green] Playing: [bold]{audio_file.name}[/bold]",
             )
             return True
+
+    def _format_time(self, seconds: float) -> str:
+        """Format seconds as M:SS.
+
+        Args:
+            seconds: Number of seconds
+
+        Returns:
+            Formatted time string
+
+        """
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}:{secs:02d}"
+
+    def _show_progress(self, filename: str, duration: float) -> bool:
+        """Display progress bar during playback.
+
+        Args:
+            filename: Name of the audio file
+            duration: Total duration in seconds
+
+        Returns:
+            True if completed, False if interrupted
+
+        """
+        with Progress(
+            TextColumn("[bold cyan]▶[/bold cyan]"),
+            TextColumn("[white]{task.fields[filename]}[/white]"),
+            BarColumn(bar_width=30, style="cyan", complete_style="green"),
+            TaskProgressColumn(),
+            TextColumn("•"),
+            TextColumn("[cyan]{task.fields[elapsed]}[/cyan]"),
+            TextColumn("/"),
+            TextColumn("[dim]{task.fields[total_time]}[/dim]"),
+            TextColumn("•"),
+            TextColumn("[dim]Ctrl+C to stop[/dim]"),
+            console=self.console,
+            transient=True,
+        ) as progress:
+            task = progress.add_task(
+                "Playing",
+                total=duration,
+                filename=filename,
+                elapsed="0:00",
+                total_time=self._format_time(duration),
+            )
+
+            start_time = time.time()
+
+            try:
+                while sd.get_stream() and sd.get_stream().active:
+                    elapsed = time.time() - start_time
+                    progress.update(
+                        task,
+                        completed=min(elapsed, duration),
+                        elapsed=self._format_time(elapsed),
+                    )
+                    time.sleep(0.1)  # 10 FPS update rate
+
+            except KeyboardInterrupt:
+                self.stop_audio()
+                self.console.print("\n[yellow]⏹[/yellow] Playback stopped")
+                return False
+            else:
+                # Ensure 100% on completion
+                progress.update(
+                    task,
+                    completed=duration,
+                    elapsed=self._format_time(duration),
+                )
+                return True
 
     def stop_audio(self) -> None:
         """Stop any currently playing audio."""

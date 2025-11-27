@@ -71,6 +71,7 @@ def main() -> None:
     root_dir = Path(__file__).parent.parent
     pyproject_path = root_dir / "pyproject.toml"
     cli_path = root_dir / "src" / "cli.py"
+    test_cli_path = root_dir / "tests" / "integration" / "test_cli.py"
 
     if not pyproject_path.exists() or not cli_path.exists():
         console.print("[red]Could not find project files.[/red]")
@@ -103,6 +104,15 @@ def main() -> None:
         f'version="{new_version}"',
     )
     console.print(f"[green]✓[/green] Updated {cli_path.name}")
+
+    # Update tests/integration/test_cli.py
+    if test_cli_path.exists():
+        update_file(
+            test_cli_path,
+            r'assert "\d+\.\d+\.\d+" in result\.output',
+            f'assert "{new_version}" in result.output',
+        )
+        console.print(f"[green]✓[/green] Updated {test_cli_path.name}")
 
 
 if __name__ == "__main__":

@@ -11,8 +11,10 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 - 🔊 **Per-sound volume** - Set individual volume levels (0-200%) for each sound
 - 📋 **Queue & playlists** - Build queues and save them as reusable playlists
 - 🎨 **Beautiful CLI** - Rich-click powered interface with colors and tables
+- 📊 **Progress bar** - Visual playback progress with time display
 - 🎛️ **Multiple formats** - Supports WAV, MP3, OGG, FLAC, M4A
 - 🔍 **Auto-detection** - Finds VB-Cable and virtual audio devices automatically
+- 🔎 **Fuzzy search** - Find sounds quickly with typo-tolerant search
 - 📁 **Organized library** - Subdirectory support for sound organization
 - 🔉 **Global volume** - Adjustable playback volume with persistent settings
 - 🎲 **Auto-play mode** - Play all sounds randomly or sequentially
@@ -103,6 +105,7 @@ muc devices        # List all audio devices
 muc sounds         # List available sounds in your library
 muc sounds --tag meme        # Filter by tag
 muc sounds --favorites       # Show only favorites
+muc search [query] # Fuzzy search for sounds by name or tag
 muc play [name]    # Play a specific sound (prompts if no name)
 muc stop           # Stop currently playing sound
 muc auto           # Play all sounds randomly (use --sequential for alphabetical order)
@@ -206,22 +209,20 @@ muc hotkeys-reset
 
 ### Interactive Menu Mode
 
-For a full-featured text menu:
+For a full-featured visual menu:
 ```bash
 muc interactive
 ```
 
-Menu options:
-1. List all sounds
-2. Play sound by name
-3. View hotkey bindings
-4. Start hotkey listener
-5. Stop current sound
-6. List audio devices
-7. Change output device
-8. Adjust volume
-9. Auto-play all sounds
-0. Exit
+Features a visual status header showing device, volume, and sound count, plus:
+- 🎵 List & play sounds
+- 🔍 Search sounds (fuzzy matching)
+- ⌨️ View & manage hotkeys
+- 🎧 Start hotkey listener
+- ⏹️ Stop current sound
+- 🔊 Adjust volume
+- ⚙️ Change output device
+- 🎲 Auto-play all sounds
 
 ## 🎵 Audio File Management
 

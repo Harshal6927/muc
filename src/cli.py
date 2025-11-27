@@ -3,8 +3,10 @@
 
 import contextlib
 import sys
+from pathlib import Path
 
 import rich_click as click
+import sounddevice as sd
 from pynput import keyboard
 from rich.console import Console
 from rich.panel import Panel
@@ -14,10 +16,13 @@ from .audio_manager import AudioManager
 from .config import Config
 from .exceptions import MUCError
 from .hotkey_manager import HotkeyManager
+from .interactive_menu import InteractiveMenu
 from .logging_config import init_logging
 from .metadata import MetadataManager
 from .queue_manager import QueueManager
+from .search import search_sounds
 from .soundboard import Soundboard
+from .status_display import StatusDisplay
 from .validators import SUPPORTED_FORMATS, validate_audio_file, validate_audio_file_safe
 
 # Configure rich-click
@@ -791,7 +796,7 @@ def listen() -> None:
     Uses both default (F1-F10) and custom hotkey bindings.
     Press ESC to stop listening.
     """
-    soundboard, _ = get_soundboard()
+    soundboard, audio_manager = get_soundboard()
 
     if not soundboard.sounds:
         console.print("[red]✗[/red] No sounds found.")
@@ -801,10 +806,53 @@ def listen() -> None:
     soundboard.setup_hotkeys()
     soundboard.list_hotkeys()
 
+    # Get device name for status display
+    device_name = "Not configured"
+    if audio_manager.output_device_id is not None:
+        try:
+            device = sd.query_devices(audio_manager.output_device_id)
+            device_name = str(device["name"])  # pyright: ignore[reportArgumentType, reportCallIssue]
+        except (sd.PortAudioError, ValueError):
+            pass
+
+    # Create status display
+    status = StatusDisplay(
+        console=console,
+        device_name=device_name,
+        volume=audio_manager.volume,
+        sound_count=len(soundboard.sounds),
+        hotkey_count=len(soundboard.hotkeys),
+    )
+
+    # Hook into soundboard to update status
+    original_play = soundboard.audio_manager.play_audio
+
+    def play_with_status(
+        audio_file: Path,
+        *,
+        blocking: bool = False,
+        sound_volume: float = 1.0,
+        show_progress: bool = True,
+    ) -> bool:
+        # Extract sound name from path
+        sound_name = audio_file.stem
+        status.update_playing(sound_name)
+        result = original_play(
+            audio_file,
+            blocking=blocking,
+            sound_volume=sound_volume,
+            show_progress=show_progress,
+        )
+        status.update_stopped()
+        return result
+
+    soundboard.audio_manager.play_audio = play_with_status  # pyright: ignore[reportAttributeAccessIssue]
+
     console.print("\n[bold green]Soundboard Active![/bold green]")
     console.print("[dim]Press ESC to stop, or Ctrl+C to exit.[/dim]\n")
 
     soundboard.start_listening()
+    status.start()
 
     # Wait for ESC key
     def on_press(key: keyboard.Key) -> bool | None:
@@ -818,7 +866,10 @@ def listen() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        status.stop()
         soundboard.stop_listening()
+        # Restore original play_audio method
+        soundboard.audio_manager.play_audio = original_play  # pyright: ignore[reportAttributeAccessIssue]
         console.print("\n[yellow]Stopped listening.[/yellow]")
 
 
@@ -876,6 +927,61 @@ def validate() -> None:
 
 
 @cli.command()
+@click.argument("query", required=False)
+def search(query: str | None) -> None:
+    """Search for sounds by name with fuzzy matching.
+
+    Supports fuzzy matching for typos and partial names.
+
+    Examples:
+        muc search air         # Find sounds containing 'air'
+        muc search rickrol     # Fuzzy match for 'rickroll'
+
+    """
+    soundboard, _ = get_soundboard()
+    metadata = MetadataManager()
+
+    if not soundboard.sounds:
+        console.print("[red]✗[/red] No sounds found.")
+        sys.exit(1)
+
+    # If no query, prompt interactively
+    if not query:
+        query = str(click.prompt("Search for"))
+
+    # Build tags dict
+    tags = {name: metadata.get_metadata(name).tags for name in soundboard.sounds}
+
+    results = search_sounds(query, soundboard.sounds, tags)
+
+    if not results:
+        console.print(f"[yellow]⚠[/yellow] No sounds matching '{query}'")
+        return
+
+    # Display results
+    table = Table(title=f"Search Results for '{query}'", show_header=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Sound Name", style="white")
+    table.add_column("Match", style="cyan")
+    table.add_column("Score", style="green", justify="right")
+
+    for idx, result in enumerate(results, 1):
+        score_pct = f"{int(result.score * 100)}%"
+        table.add_row(str(idx), result.name, result.match_type, score_pct)
+
+    console.print(table)
+
+    # Offer to play
+    if len(results) == 1:
+        if click.confirm(f"Play '{results[0].name}'?"):
+            soundboard.play_sound(results[0].name, blocking=True)
+    elif click.confirm("Play a result?"):
+        choice = click.prompt("Enter number", type=int, default=1)
+        if 1 <= choice <= len(results):
+            soundboard.play_sound(results[choice - 1].name, blocking=True)
+
+
+@cli.command()
 @click.argument("level", type=click.FloatRange(0.0, 1.0), required=False)
 def volume(level: float | None) -> None:
     """Set or display the playback volume (0.0 to 1.0).
@@ -913,80 +1019,12 @@ def auto(sequential: bool) -> None:  # noqa: FBT001
         soundboard.play_all_sounds(shuffle=not sequential)
 
 
-def _handle_play_sound(soundboard: Soundboard) -> None:
-    """Handle playing a sound by name."""
-    sound_name = click.prompt("Enter sound name")
-    soundboard.play_sound(sound_name)
-
-
-def _handle_hotkey_listener(soundboard: Soundboard) -> None:
-    """Handle starting the hotkey listener."""
-    console.print("\n[bold green]Listening for hotkeys...[/bold green]")
-    console.print("[dim]Press ESC to stop.[/dim]\n")
-    soundboard.start_listening()
-
-    def on_press(key: keyboard.Key) -> bool | None:
-        if key == keyboard.Key.esc:
-            return False
-        return None
-
-    with keyboard.Listener(on_press=on_press) as listener:  # pyright: ignore[reportArgumentType]
-        listener.join()
-
-    soundboard.stop_listening()
-    console.print("[yellow]Stopped listening.[/yellow]")
-
-
-def _handle_change_device(audio_manager: AudioManager) -> None:
-    """Handle changing the output device."""
-    audio_manager.print_devices()
-    device_id = click.prompt("Enter device ID", type=int)
-    if audio_manager.set_output_device(device_id):
-        config = Config()
-        config.output_device_id = device_id
-        config.save()
-
-
-def _handle_volume(audio_manager: AudioManager) -> None:
-    """Handle volume adjustment."""
-    percentage = int(audio_manager.volume * 100)
-    console.print(f"[cyan]Current volume:[/cyan] {percentage}%")
-    volume_input = click.prompt(
-        "Enter volume level (0-100)",
-        type=click.IntRange(0, 100),
-    )
-    audio_manager.set_volume(volume_input / 100.0)
-    config = Config()
-    config.volume = audio_manager.volume
-    config.save()
-
-
-def _show_menu() -> None:
-    """Display the interactive menu."""
-    console.print("\n[bold cyan]═══ Soundboard Menu ═══[/bold cyan]")
-    console.print("1. List all sounds")
-    console.print("2. Play sound by name")
-    console.print("3. View hotkey bindings")
-    console.print("4. Start hotkey listener")
-    console.print("5. Stop current sound")
-    console.print("6. List audio devices")
-    console.print("7. Change output device")
-    console.print("8. Adjust volume")
-    console.print("9. Auto-play all sounds")
-    console.print("0. Exit")
-
-
-def _handle_auto_play(soundboard: Soundboard) -> None:
-    """Handle auto-play all sounds."""
-    with contextlib.suppress(KeyboardInterrupt):
-        soundboard.play_all_sounds()
-
-
 @cli.command()
 def interactive() -> None:
     """Launch interactive menu mode.
 
-    Provides a text-based menu for exploring and using the soundboard.
+    Provides a visual text-based menu for exploring and using the soundboard.
+    Includes search, status display, and all soundboard features.
     """
     soundboard, audio_manager = get_soundboard()
 
@@ -995,34 +1033,11 @@ def interactive() -> None:
         console.print(f"[dim]Add audio files to: {soundboard.sounds_dir}[/dim]")
         sys.exit(1)
 
-    soundboard.setup_default_hotkeys()
+    soundboard.setup_hotkeys()
 
-    # Menu action dispatch table (lambdas needed for partial application)
-    menu_actions = {
-        "1": soundboard.list_sounds,
-        "2": lambda: _handle_play_sound(soundboard),
-        "3": soundboard.list_hotkeys,
-        "4": lambda: _handle_hotkey_listener(soundboard),
-        "5": soundboard.stop_sound,
-        "6": audio_manager.print_devices,
-        "7": lambda: _handle_change_device(audio_manager),
-        "8": lambda: _handle_volume(audio_manager),
-        "9": lambda: _handle_auto_play(soundboard),
-    }
-
-    while True:
-        _show_menu()
-        choice = click.prompt("\nEnter your choice", type=str).strip()
-
-        if choice == "0":
-            console.print("\n[cyan]Goodbye! 👋[/cyan]")
-            break
-
-        action = menu_actions.get(choice)
-        if action:
-            action()
-        else:
-            console.print("[red]Invalid choice.[/red]")
+    # Use the enhanced interactive menu
+    menu = InteractiveMenu(console, soundboard, audio_manager)
+    menu.run()
 
 
 def main() -> None:

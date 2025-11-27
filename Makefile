@@ -8,12 +8,12 @@ lint:
 
 test:
 	@echo "Running tests... 🧪"
-	uv run pytest tests/ -v
+	uv run pytest tests/ -q
 	@echo "Tests completed. ✅"
 
 # test-fast:
 # 	@echo "Running fast tests... ⚡"
-# 	uv run pytest tests/ -v -m "not slow"
+# 	uv run pytest tests/ -q -m "not slow"
 # 	@echo "Fast tests completed. ✅"
 
 coverage:
