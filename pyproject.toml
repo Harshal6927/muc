@@ -12,7 +12,7 @@ description = "Play audio through your microphone in games using hotkeys"
 name = "muc"
 readme = "README.md"
 requires-python = ">=3.13"
-version = "0.3.0"
+version = "0.4.0"
 
 [project.optional-dependencies]
 yt-dlp = ["yt-dlp>=2025.11.12"]

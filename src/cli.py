@@ -67,7 +67,7 @@ def get_soundboard() -> tuple[Soundboard, AudioManager]:
 @click.group(invoke_without_command=True)
 @click.option("--debug", is_flag=True, help="Enable debug logging")
 @click.pass_context
-@click.version_option(version="0.3.0", prog_name="muc")
+@click.version_option(version="0.4.0", prog_name="muc")
 def cli(ctx: click.Context, debug: bool) -> None:  # noqa: FBT001
     """[bold cyan]MUC Soundboard[/bold cyan].
 
