@@ -18,6 +18,9 @@ Play audio files through your microphone in multiplayer games like CS, Battlefie
 - 📁 **Organized library** - Subdirectory support for sound organization
 - 🔉 **Global volume** - Adjustable playback volume with persistent settings
 - 🎲 **Auto-play mode** - Play all sounds randomly or sequentially
+- 📥 **YouTube download** - Download audio directly from YouTube with yt-dlp
+- ✂️ **Audio trimming** - Trim sounds with optional fade in/out
+- 🔊 **Audio normalization** - Normalize levels for consistent volume
 - ⚙️ **Persistent config** - Saves your settings to `~/.muc/config.json`
 - 👤 **Configuration profiles** - Create and switch between different setups for different games
 - 📤 **Config export/import** - Share configurations between machines or with friends
@@ -172,6 +175,14 @@ muc dirs add <path>          # Add a sounds directory
 muc dirs remove <path>       # Remove a sounds directory
 muc dirs conflicts           # Show sounds with name conflicts
 
+# Download & audio tools
+muc download <url>           # Download audio from YouTube
+muc download <url> --name myfile --start 0:15 --end 0:30  # With trim
+muc trim <sound> --start 0:00 --end 0:05   # Trim audio file
+muc normalize <sound>        # Normalize audio levels
+muc normalize --all          # Normalize all sounds
+muc normalize --analyze      # Just analyze levels
+
 # Interactive mode
 muc interactive    # Launch full interactive menu
 
@@ -283,12 +294,58 @@ The app recursively scans all subdirectories.
 
 ### Getting Audio Files
 
+**Using built-in downloader (recommended):**
 ```bash
-# Download from YouTube (uses yt-dlp if installed)
+# Download from YouTube directly to your sounds folder
+muc download "https://youtube.com/watch?v=..." --name my-sound
+
+# Download with time range extraction
+muc download "https://youtube.com/..." --start 0:15 --end 0:45
+
+# Choose output format
+muc download "https://youtu.be/..." --format mp3
+```
+
+**Requirements for download command:**
+- yt-dlp: `uv add muc[yt-dlp]` or `pip install yt-dlp`
+- ffmpeg: Download from https://ffmpeg.org/download.html
+
+**Manual method:**
+```bash
+# Download using yt-dlp directly
 yt-dlp -x --audio-format wav "https://youtube.com/watch?v=..."
 
-# The file will be saved in your current directory
-# Then move it to sounds/
+# Move file to sounds/
+mv video.wav sounds/
+```
+
+### Audio Processing
+
+**Trim sounds:**
+```bash
+# Trim to specific time range
+muc trim airhorn --start 0:00 --end 0:05
+
+# Trim with fade effects
+muc trim long_song --start 1:30 --end 2:00 --fade-in 0.5 --fade-out 0.5
+
+# Save with custom name
+muc trim intro --end 10 --output short_intro
+```
+
+**Normalize audio levels:**
+```bash
+# Normalize a single sound
+muc normalize airhorn
+
+# Analyze levels without changing
+muc normalize --all --analyze
+
+# Normalize all sounds to -6 dB
+muc normalize --all --target -6
+
+# Use RMS normalization (loudness-based)
+muc normalize airhorn --mode rms
 ```
 
 ## 🔧 Configuration

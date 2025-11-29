@@ -10,11 +10,14 @@ import sounddevice as sd
 from pynput import keyboard
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from .audio_manager import AudioManager
+from .audio_tools import AudioNormalizer, AudioTrimmer
 from .config import Config
 from .config_transfer import ConfigTransfer
+from .downloader import YouTubeDownloader, check_ffmpeg_available, check_yt_dlp_available
 from .exceptions import MUCError
 from .hotkey_manager import HotkeyManager
 from .interactive_menu import InteractiveMenu
@@ -1451,6 +1454,317 @@ def dirs_conflicts() -> None:
 
     manager = SoundsDirectoryManager([Path(d) for d in dirs])
     manager.show_conflicts(console)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Download & Audio Management Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.argument("url")
+@click.option("--name", "-n", help="Output filename (without extension)")
+@click.option("--start", "-s", help="Start time (e.g., '0:30' or '30')")
+@click.option("--end", "-e", help="End time (e.g., '1:00' or '60')")
+@click.option(
+    "--format",
+    "-f",
+    "audio_format",
+    default="wav",
+    type=click.Choice(["wav", "mp3", "ogg"]),
+    help="Output audio format",
+)
+def download(url: str, name: str | None, start: str | None, end: str | None, audio_format: str) -> None:
+    """Download audio from YouTube.
+
+    Downloads the audio track from a YouTube video and saves it
+    to your sounds directory.
+
+    Examples:
+        muc download "https://youtube.com/watch?v=..." --name my-sound
+        muc download "https://youtu.be/..." --start 0:15 --end 0:30
+        muc download "https://youtube.com/..." --format mp3
+
+    """
+    if not check_yt_dlp_available():
+        console.print("[red]✗[/red] yt-dlp is not installed")
+        console.print("\n[dim]Install with:[/dim]")
+        console.print("  uv add yt-dlp")
+        console.print("  [dim]or[/dim]")
+        console.print("  pip install yt-dlp")
+        sys.exit(1)
+
+    if not check_ffmpeg_available():
+        console.print("[red]✗[/red] ffmpeg is not installed (required for audio conversion)")
+        console.print("[dim]Download from: https://ffmpeg.org/download.html[/dim]")
+        sys.exit(1)
+
+    # Get sounds directory from profile
+    pm = ProfileManager()
+    profile = pm.get_active_profile()
+
+    sounds_dirs = profile.sounds_dirs
+    if sounds_dirs:
+        sounds_dir = Path(sounds_dirs[0])  # Use first directory
+    elif profile.sounds_dir:
+        sounds_dir = Path(profile.sounds_dir)
+    else:
+        sounds_dir = Path.cwd() / "sounds"
+
+    downloader = YouTubeDownloader(console, sounds_dir)
+
+    # Validate URL
+    video_id = downloader.validate_url(url)
+    if not video_id:
+        console.print("[red]✗[/red] Invalid YouTube URL")
+        console.print("[dim]Supported formats: youtube.com/watch?v=..., youtu.be/...[/dim]")
+        sys.exit(1)
+
+    # Get video info
+    console.print("[dim]Fetching video information...[/dim]")
+    info = downloader.get_video_info(url)
+
+    if info:
+        duration = info.get("duration")
+        duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "Unknown"
+        console.print(f"\n[bold]{info['title']}[/bold]")
+        console.print(f"[dim]Duration: {duration_str} | By: {info.get('uploader', 'Unknown')}[/dim]\n")
+
+    # Download with progress
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Downloading...", total=100)
+
+        def update_progress(percent: float, status: str) -> None:
+            progress.update(task, completed=percent, description=status)
+
+        result = downloader.download(
+            url=url,
+            output_name=name,
+            start_time=start,
+            end_time=end,
+            audio_format=audio_format,
+            progress_callback=update_progress,
+        )
+
+    if result:
+        console.print(f"\n[green]✓[/green] Downloaded: [bold]{result.name}[/bold]")
+        console.print(f"[dim]Saved to: {result}[/dim]")
+
+        # Offer to play
+        if click.confirm("Play the downloaded sound?"):
+            soundboard, _ = get_soundboard()
+            soundboard.play_sound(result.stem, blocking=True)
+    else:
+        console.print("[red]✗[/red] Download failed")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("sound_name")
+@click.option("--start", "-s", default="0", help="Start time (e.g., '0:30')")
+@click.option("--end", "-e", help="End time (e.g., '1:00')")
+@click.option("--output", "-o", help="Output filename")
+@click.option("--fade-in", type=float, default=0, help="Fade in duration (seconds)")
+@click.option("--fade-out", type=float, default=0, help="Fade out duration (seconds)")
+@click.option("--preview", "-p", is_flag=True, help="Preview before saving")
+def trim(
+    sound_name: str,
+    start: str,
+    end: str | None,
+    output: str | None,
+    fade_in: float,
+    fade_out: float,
+    preview: bool,  # noqa: FBT001
+) -> None:
+    """Trim an audio file to a specific time range.
+
+    Creates a new file, preserving the original.
+
+    Examples:
+        muc trim airhorn --start 0:00 --end 0:05
+        muc trim long_song --start 1:30 --end 2:00 --output chorus
+        muc trim intro --end 5 --fade-out 0.5
+
+    """
+    soundboard, audio_manager = get_soundboard()
+
+    if sound_name not in soundboard.sounds:
+        console.print(f"[red]✗[/red] Sound '{sound_name}' not found")
+        sys.exit(1)
+
+    input_path = soundboard.sounds[sound_name]
+    trimmer = AudioTrimmer()
+
+    # Parse times
+    start_secs = trimmer.parse_time_to_seconds(start)
+    end_secs = trimmer.parse_time_to_seconds(end) if end else None
+
+    # Get original duration
+    original_duration = trimmer.get_duration(input_path)
+
+    # Validate
+    if end_secs and end_secs > original_duration:
+        console.print(f"[yellow]⚠[/yellow] End time exceeds duration ({original_duration:.1f}s), will use end of file")
+        end_secs = original_duration
+
+    # Calculate new duration
+    new_duration = (end_secs or original_duration) - start_secs
+
+    # Show info
+    console.print(f"\n[bold]Trimming: {sound_name}[/bold]")
+    console.print(f"Original: {trimmer.format_seconds(original_duration)}")
+    console.print(
+        f"New: {trimmer.format_seconds(start_secs)} → "
+        f"{trimmer.format_seconds(end_secs or original_duration)} ({trimmer.format_seconds(new_duration)})",
+    )
+
+    if fade_in:
+        console.print(f"Fade in: {fade_in}s")
+    if fade_out:
+        console.print(f"Fade out: {fade_out}s")
+
+    # Preview
+    if preview:
+        console.print("\n[dim]Playing preview of original audio...[/dim]")
+        soundboard.play_sound(sound_name, blocking=True)
+
+    # Confirm
+    if not click.confirm("\nProceed with trim?", default=True):
+        return
+
+    # Determine output path
+    output_path = input_path.parent / f"{output}{input_path.suffix}" if output else None
+
+    # Trim
+    try:
+        result = trimmer.trim(
+            input_path=input_path,
+            output_path=output_path,
+            start=start_secs,
+            end=end_secs,
+            fade_in=fade_in,
+            fade_out=fade_out,
+        )
+
+        console.print(f"\n[green]✓[/green] Created: [bold]{result.name}[/bold]")
+        console.print(f"[dim]Duration: {trimmer.format_seconds(new_duration)}[/dim]")
+
+        # Offer to play
+        if click.confirm("Play the trimmed sound?"):
+            audio_manager.play_audio(result, blocking=True)
+
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]✗[/red] Trim failed: {e}")
+        sys.exit(1)
+
+
+@cli.command(name="normalize")
+@click.argument("sound_name", required=False)
+@click.option("--all", "normalize_all", is_flag=True, help="Normalize all sounds")
+@click.option("--target", "-t", type=float, default=-3.0, help="Target level in dB (default: -3)")
+@click.option("--mode", type=click.Choice(["peak", "rms"]), default="peak", help="Normalization mode")
+@click.option("--in-place", is_flag=True, help="Overwrite original files")
+@click.option("--analyze", "-a", is_flag=True, help="Only analyze, don't normalize")
+def normalize_cmd(
+    sound_name: str | None,
+    normalize_all: bool,  # noqa: FBT001
+    target: float,
+    mode: str,
+    in_place: bool,  # noqa: FBT001
+    analyze: bool,  # noqa: FBT001
+) -> None:
+    """Normalize audio levels.
+
+    Adjusts volume to a consistent level across sounds.
+
+    Examples:
+        muc normalize airhorn                    # Normalize single sound
+        muc normalize --all                      # Normalize all sounds
+        muc normalize airhorn --target -6        # Target -6 dB
+        muc normalize airhorn --analyze          # Just show levels
+        muc normalize --all --in-place           # Overwrite originals
+
+    """
+    soundboard, _ = get_soundboard()
+    normalizer = AudioNormalizer()
+
+    # Determine files to process
+    if normalize_all:
+        files = list(soundboard.sounds.values())
+    elif sound_name:
+        if sound_name not in soundboard.sounds:
+            console.print(f"[red]✗[/red] Sound '{sound_name}' not found")
+            sys.exit(1)
+        files = [soundboard.sounds[sound_name]]
+    else:
+        console.print("[red]✗[/red] Specify a sound name or use --all")
+        sys.exit(1)
+
+    if not files:
+        console.print("[yellow]⚠[/yellow] No sounds to process")
+        return
+
+    # Analyze mode
+    if analyze:
+        table = Table(title="Audio Level Analysis", show_header=True)
+        table.add_column("Sound", style="white")
+        table.add_column("Peak (dB)", justify="right")
+        table.add_column("RMS (dB)", justify="right")
+        table.add_column("Duration", justify="right")
+        table.add_column("Status", justify="center")
+
+        for file_path in files:
+            info = normalizer.analyze(file_path)
+
+            # Determine status
+            if info["peak_db"] > -1:
+                status = "[red]CLIPPING[/red]"
+            elif info["peak_db"] < -12:
+                status = "[yellow]QUIET[/yellow]"
+            else:
+                status = "[green]OK[/green]"
+
+            table.add_row(
+                file_path.stem,
+                f"{info['peak_db']:.1f}",
+                f"{info['rms_db']:.1f}",
+                f"{info['duration']:.1f}s",
+                status,
+            )
+
+        console.print(table)
+        return
+
+    # Normalize
+    if in_place and not click.confirm("This will overwrite original files. Continue?"):
+        return
+
+    console.print(f"\n[cyan]Normalizing {len(files)} file(s) to {target} dB ({mode} mode)...[/cyan]\n")
+
+    with Progress(console=console) as progress:
+        task = progress.add_task("Normalizing...", total=len(files))
+
+        def update(current: int, name: str) -> None:
+            progress.update(task, completed=current, description=f"Processing: {name}")
+
+        results = normalizer.normalize_batch(
+            files,
+            target_db=target,
+            mode=mode,
+            in_place=in_place,
+            progress_callback=update,
+        )
+
+    console.print(f"\n[green]✓[/green] Normalized {len(results)} file(s)")
+
+    if not in_place:
+        console.print("[dim]Original files preserved. New files have '_normalized' suffix.[/dim]")
 
 
 def main() -> None:
