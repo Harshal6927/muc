@@ -2,6 +2,7 @@
 """Configuration management for muc soundboard."""
 
 import json
+import threading
 from pathlib import Path
 
 from .exceptions import ConfigCorruptedError
@@ -12,7 +13,7 @@ logger = get_logger(__name__)
 
 
 class Config:
-    """Manages application configuration."""
+    """Manages application configuration with async save support."""
 
     def __init__(self) -> None:
         """Initialize the Config with default values and load existing config."""
@@ -22,6 +23,12 @@ class Config:
         self.volume: float = 1.0
         self.hotkeys: dict[str, str] = {}
         self.hotkey_mode: str = "merged"  # "default" | "custom" | "merged"
+
+        # Async save configuration
+        self._save_lock = threading.Lock()
+        self._dirty = False
+        self._auto_save_delay = 1.0  # seconds
+        self._auto_save_timer: threading.Timer | None = None
 
         # Load existing config if it exists
         self.load()
@@ -70,27 +77,75 @@ class Config:
             except OSError as e:
                 logger.warning(f"Could not backup config: {e}")
 
-    def save(self) -> None:
-        """Save configuration to file."""
-        logger.debug("Saving configuration")
+    def save(self, blocking: bool = True) -> None:
+        """Save configuration to file.
 
-        self.config_file.parent.mkdir(parents=True, exist_ok=True)
+        Args:
+            blocking: If True, save synchronously. Otherwise, schedule async save.
 
-        data = {
-            "output_device_id": self.output_device_id,
-            "sounds_dir": str(self.sounds_dir),
-            "volume": self.volume,
-            "hotkeys": self.hotkeys,
-            "hotkey_mode": self.hotkey_mode,
-        }
+        """
+        if blocking:
+            self._save_sync()
+        else:
+            self._schedule_save()
 
-        try:
-            with self.config_file.open("w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            logger.info("Configuration saved successfully")
-        except OSError as e:
-            logger.exception("Failed to save config")
-            raise ConfigCorruptedError(
-                f"Cannot save configuration: {e}",
-                suggestion="Check write permissions for ~/.muc/",
-            ) from e
+    def _save_sync(self) -> None:
+        """Save configuration synchronously with atomic write."""
+        logger.debug("Saving configuration (sync)")
+
+        with self._save_lock:
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+
+            data = {
+                "output_device_id": self.output_device_id,
+                "sounds_dir": str(self.sounds_dir),
+                "volume": self.volume,
+                "hotkeys": self.hotkeys,
+                "hotkey_mode": self.hotkey_mode,
+            }
+
+            try:
+                # Write to temp file first, then rename (atomic)
+                temp_path = self.config_file.with_suffix(".tmp")
+                with temp_path.open("w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                temp_path.replace(self.config_file)
+
+                self._dirty = False
+                logger.info("Configuration saved successfully")
+            except OSError as e:
+                logger.exception("Failed to save config")
+                raise ConfigCorruptedError(
+                    f"Cannot save configuration: {e}",
+                    suggestion="Check write permissions for ~/.muc/",
+                ) from e
+
+    def _schedule_save(self) -> None:
+        """Schedule an async save with debouncing."""
+        self._dirty = True
+
+        # Cancel existing timer
+        if self._auto_save_timer:
+            self._auto_save_timer.cancel()
+
+        # Schedule new save
+        self._auto_save_timer = threading.Timer(
+            self._auto_save_delay,
+            self._save_sync,
+        )
+        self._auto_save_timer.daemon = True
+        self._auto_save_timer.start()
+        logger.debug(f"Scheduled async save in {self._auto_save_delay}s")
+
+    def force_save(self) -> None:
+        """Force immediate save if dirty."""
+        if self._dirty:
+            if self._auto_save_timer:
+                self._auto_save_timer.cancel()
+                self._auto_save_timer = None
+            self._save_sync()
+
+    @property
+    def is_dirty(self) -> bool:
+        """Check if there are unsaved changes."""
+        return self._dirty

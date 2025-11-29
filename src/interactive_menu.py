@@ -3,7 +3,6 @@
 
 import contextlib
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 
 import click
 import sounddevice as sd
@@ -12,14 +11,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from .audio_manager import AudioManager
 from .config import Config
 from .logging_config import get_logger
 from .metadata import MetadataManager
 from .search import SearchResult, search_sounds
-
-if TYPE_CHECKING:
-    from .audio_manager import AudioManager
-    from .soundboard import Soundboard
+from .soundboard import Soundboard
 
 logger = get_logger(__name__)
 

@@ -22,6 +22,7 @@ from .exceptions import MUCError
 from .hotkey_manager import HotkeyManager
 from .interactive_menu import InteractiveMenu
 from .logging_config import init_logging
+from .memory import MemoryMonitor
 from .metadata import MetadataManager
 from .profile_manager import ProfileManager
 from .queue_manager import QueueManager
@@ -114,7 +115,7 @@ def get_soundboard() -> tuple[Soundboard, AudioManager]:
 @click.option("--debug", is_flag=True, help="Enable debug logging")
 @click.pass_context
 @click.version_option(version="0.4.0", prog_name="muc")
-def cli(ctx: click.Context, debug: bool) -> None:  # noqa: FBT001
+def cli(ctx: click.Context, debug: bool) -> None:
     """[bold cyan]MUC Soundboard[/bold cyan].
 
     Play audio files through your microphone in games using hotkeys.
@@ -212,7 +213,7 @@ def play(sound_name: str | None) -> None:
 @cli.command()
 @click.option("--tag", "-t", "filter_tag", help="Filter by tag (comma-separated for multiple)")
 @click.option("--favorites", "-f", is_flag=True, help="Show only favorites")
-def sounds(filter_tag: str | None, favorites: bool) -> None:  # noqa: FBT001
+def sounds(filter_tag: str | None, favorites: bool) -> None:
     """List all available sounds in your library.
 
     Use --tag to filter by tags, --favorites to show only favorites.
@@ -382,7 +383,7 @@ def tags() -> None:
 @click.argument("sound_name")
 @click.option("--on", "set_on", is_flag=True, help="Set as favorite")
 @click.option("--off", "set_off", is_flag=True, help="Remove from favorites")
-def favorite(sound_name: str, set_on: bool, set_off: bool) -> None:  # noqa: FBT001
+def favorite(sound_name: str, set_on: bool, set_off: bool) -> None:
     """Toggle or set favorite status for a sound.
 
     Examples:
@@ -477,7 +478,7 @@ def sound_volume(sound_name: str, level: float | None) -> None:
 @cli.command()
 @click.argument("sound_name")
 @click.option("--preview", "-p", is_flag=True, help="Play first 3 seconds")
-def info(sound_name: str, preview: bool) -> None:  # noqa: FBT001
+def info(sound_name: str, preview: bool) -> None:
     """Show detailed information about a sound.
 
     Example: muc info airhorn
@@ -763,7 +764,7 @@ def playlist_save(name: str) -> None:
 @playlist.command(name="load")
 @click.argument("name")
 @click.option("--append", "-a", is_flag=True, help="Append to current queue instead of replacing")
-def playlist_load(name: str, append: bool) -> None:  # noqa: FBT001
+def playlist_load(name: str, append: bool) -> None:
     """Load a playlist into the queue.
 
     Example: muc playlist load gaming
@@ -1048,7 +1049,7 @@ def volume(level: float | None) -> None:
 
 @cli.command()
 @click.option("--sequential", is_flag=True, help="Play sounds in alphabetical order instead of random.")
-def auto(sequential: bool) -> None:  # noqa: FBT001
+def auto(sequential: bool) -> None:
     """Play all sounds randomly, one after another.
 
     Each sound will play completely before the next one starts.
@@ -1194,7 +1195,7 @@ def profile_switch(name: str) -> None:
 @profile.command(name="delete")
 @click.argument("name")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
-def profile_delete(name: str, force: bool) -> None:  # noqa: FBT001
+def profile_delete(name: str, force: bool) -> None:
     """Delete a profile.
 
     Example: muc profile delete old-profile
@@ -1286,7 +1287,7 @@ def config_group() -> None:
 @click.option("--profile", "-p", "profile_name", help="Profile to export (default: active)")
 @click.option("--all", "export_all", is_flag=True, help="Export all profiles")
 @click.option("--no-hotkeys", is_flag=True, help="Exclude hotkey bindings")
-def config_export(output: str, profile_name: str | None, export_all: bool, no_hotkeys: bool) -> None:  # noqa: FBT001
+def config_export(output: str, profile_name: str | None, export_all: bool, no_hotkeys: bool) -> None:
     """Export configuration to a file.
 
     Examples:
@@ -1320,7 +1321,7 @@ def config_export(output: str, profile_name: str | None, export_all: bool, no_ho
 @click.option("--name", "-n", help="Import with different name")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing profile")
 @click.option("--sounds-dir", type=click.Path(), help="Sounds directory to use")
-def config_import(input_file: str, name: str | None, overwrite: bool, sounds_dir: str | None) -> None:  # noqa: FBT001
+def config_import(input_file: str, name: str | None, overwrite: bool, sounds_dir: str | None) -> None:
     """Import configuration from a file.
 
     Examples:
@@ -1580,7 +1581,7 @@ def trim(
     output: str | None,
     fade_in: float,
     fade_out: float,
-    preview: bool,  # noqa: FBT001
+    preview: bool,
 ) -> None:
     """Trim an audio file to a specific time range.
 
@@ -1673,11 +1674,11 @@ def trim(
 @click.option("--analyze", "-a", is_flag=True, help="Only analyze, don't normalize")
 def normalize_cmd(
     sound_name: str | None,
-    normalize_all: bool,  # noqa: FBT001
+    normalize_all: bool,
     target: float,
     mode: str,
-    in_place: bool,  # noqa: FBT001
-    analyze: bool,  # noqa: FBT001
+    in_place: bool,
+    analyze: bool,
 ) -> None:
     """Normalize audio levels.
 
@@ -1765,6 +1766,194 @@ def normalize_cmd(
 
     if not in_place:
         console.print("[dim]Original files preserved. New files have '_normalized' suffix.[/dim]")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cache Management Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def cache() -> None:
+    """Manage the audio cache.
+
+    The cache stores recently played sounds in memory for faster playback.
+    """
+
+
+@cache.command(name="stats")
+def cache_stats() -> None:
+    """Show cache statistics.
+
+    Displays information about cache usage, hit rate, and memory consumption.
+    """
+    _, audio_manager = get_soundboard()
+    stats = audio_manager.cache_stats
+
+    table = Table(title="Audio Cache Statistics", show_header=True, header_style="bold cyan")
+    table.add_column("Metric", style="white")
+    table.add_column("Value", style="cyan", justify="right")
+
+    table.add_row("Cached Sounds", str(stats["entries"]))
+    table.add_row("Cache Size", f"{stats['size_mb']:.1f} MB")
+    table.add_row("Max Size", f"{stats['max_size_mb']:.1f} MB")
+    table.add_row("Cache Hits", str(stats["hits"]))
+    table.add_row("Cache Misses", str(stats["misses"]))
+    table.add_row("Hit Rate", f"{stats['hit_rate_percent']:.1f}%")
+
+    console.print(table)
+
+    if not audio_manager.cache_enabled:
+        console.print("\n[yellow]⚠[/yellow] Cache is currently disabled")
+
+
+@cache.command(name="clear")
+def cache_clear() -> None:
+    """Clear the audio cache.
+
+    Removes all cached sounds from memory.
+    """
+    _, audio_manager = get_soundboard()
+    audio_manager.clear_cache()
+
+
+@cache.command(name="preload")
+@click.option("--hotkeys", "-h", is_flag=True, help="Preload sounds bound to hotkeys")
+@click.option("--favorites", "-f", is_flag=True, help="Preload favorite sounds")
+@click.option("--all", "preload_all", is_flag=True, help="Preload all sounds")
+def cache_preload(hotkeys: bool, favorites: bool, preload_all: bool) -> None:
+    """Pre-load sounds into cache for faster playback.
+
+    Examples:
+        muc cache preload --hotkeys     # Preload hotkey sounds
+        muc cache preload --favorites   # Preload favorites
+        muc cache preload --all         # Preload all sounds
+
+    """
+    soundboard, audio_manager = get_soundboard()
+    metadata = MetadataManager()
+
+    if not audio_manager.cache_enabled:
+        console.print("[yellow]⚠[/yellow] Cache is disabled. Enable with 'muc cache enable'")
+        return
+
+    paths: list[Path] = []
+
+    if preload_all:
+        paths = list(soundboard.sounds.values())
+    else:
+        if hotkeys:
+            soundboard.setup_hotkeys()
+            for sound_name in soundboard.hotkeys.values():
+                if sound_name in soundboard.sounds:
+                    paths.append(soundboard.sounds[sound_name])
+
+        if favorites:
+            for name in soundboard.sounds:
+                if metadata.get_metadata(name).favorite:
+                    paths.append(soundboard.sounds[name])
+
+    if not paths:
+        console.print("[yellow]⚠[/yellow] No sounds to preload. Use --hotkeys, --favorites, or --all")
+        return
+
+    # Remove duplicates
+    paths = list(set(paths))
+
+    console.print(f"[cyan]Preloading {len(paths)} sounds...[/cyan]")
+    loaded = audio_manager.preload_sounds(paths)
+    console.print(f"[green]✓[/green] Preloaded {loaded} sounds into cache")
+
+
+@cache.command(name="enable")
+def cache_enable() -> None:
+    """Enable the audio cache."""
+    _, audio_manager = get_soundboard()
+    audio_manager.set_cache_enabled(True)
+    console.print("[green]✓[/green] Audio cache enabled")
+
+
+@cache.command(name="disable")
+def cache_disable() -> None:
+    """Disable the audio cache."""
+    _, audio_manager = get_soundboard()
+    audio_manager.set_cache_enabled(False)
+    console.print("[green]✓[/green] Audio cache disabled")
+
+
+@cache.command(name="size")
+@click.argument("size_mb", type=int)
+def cache_set_size(size_mb: int) -> None:
+    """Set the maximum cache size in MB.
+
+    Example: muc cache size 200
+    """
+    if size_mb < 1:
+        console.print("[red]✗[/red] Cache size must be at least 1 MB")
+        sys.exit(1)
+
+    _, audio_manager = get_soundboard()
+    audio_manager.set_cache_size(size_mb)
+    console.print(f"[green]✓[/green] Cache size set to {size_mb} MB")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Memory Management Commands
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@cli.group()
+def memory() -> None:
+    """Monitor and manage memory usage.
+
+    Tools for tracking memory consumption and optimizing resource usage.
+    """
+
+
+@memory.command(name="stats")
+def memory_stats() -> None:
+    """Show memory usage statistics.
+
+    Displays information about memory consumption by the soundboard.
+    """
+    _, audio_manager = get_soundboard()
+    monitor = MemoryMonitor(audio_manager)
+    stats = monitor.get_stats()
+
+    table = Table(title="Memory Statistics", show_header=True, header_style="bold cyan")
+    table.add_column("Metric", style="white")
+    table.add_column("Value", style="cyan", justify="right")
+
+    table.add_row("Cache Memory", f"{stats.cache_mb:.1f} MB")
+    table.add_row("NumPy Arrays", str(stats.numpy_arrays))
+    table.add_row("Estimated NumPy Memory", f"{stats.estimated_numpy_mb:.1f} MB")
+    table.add_row("Total Objects", str(stats.total_objects))
+
+    console.print(table)
+
+
+@memory.command(name="cleanup")
+@click.option("--aggressive", "-a", is_flag=True, help="Also clear the cache")
+def memory_cleanup(aggressive: bool) -> None:
+    """Clean up unused memory.
+
+    Forces garbage collection to free unused memory.
+
+    Examples:
+        muc memory cleanup              # Normal cleanup
+        muc memory cleanup --aggressive # Also clear cache
+
+    """
+    _, audio_manager = get_soundboard()
+    monitor = MemoryMonitor(audio_manager)
+
+    if aggressive:
+        console.print("[cyan]Performing aggressive cleanup (clearing cache)...[/cyan]")
+    else:
+        console.print("[cyan]Performing memory cleanup...[/cyan]")
+
+    collected = monitor.cleanup(aggressive=aggressive)
+    console.print(f"[green]✓[/green] Freed {collected} objects")
 
 
 def main() -> None:

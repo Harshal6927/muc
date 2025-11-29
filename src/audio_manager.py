@@ -3,6 +3,7 @@
 
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import sounddevice as sd
@@ -16,6 +17,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
+from .cache import CachedAudio, LRUAudioCache
 from .exceptions import (
     AudioFileCorruptedError,
     DeviceDisconnectedError,
@@ -31,18 +33,33 @@ logger = get_logger(__name__)
 class AudioManager:
     """Manages audio devices and playback operations."""
 
-    def __init__(self, console: Console | None = None) -> None:
+    DEFAULT_CACHE_SIZE_MB = 100
+
+    def __init__(
+        self,
+        console: Console | None = None,
+        cache_enabled: bool = True,
+        cache_size_mb: int | None = None,
+    ) -> None:
         """Initialize the AudioManager.
 
         Args:
             console: Rich console for output (creates new if None)
+            cache_enabled: Whether to enable audio caching (default: True)
+            cache_size_mb: Maximum cache size in MB (default: 100)
 
         """
         self.console = console or Console()
         self.current_stream = None
         self.output_device_id: int | None = None
         self.volume: float = 1.0
-        logger.debug("AudioManager initialized")
+
+        # Caching setup
+        self.cache_enabled = cache_enabled
+        cache_size = (cache_size_mb or self.DEFAULT_CACHE_SIZE_MB) * 1024 * 1024
+        self._cache = LRUAudioCache(max_size_bytes=cache_size)
+
+        logger.debug(f"AudioManager initialized (cache_enabled={cache_enabled})")
 
     def list_devices(self):  # noqa: ANN201
         """List all available audio devices.
@@ -183,18 +200,52 @@ class AudioManager:
             Tuple of (data, samplerate) or None if loading failed
 
         """
-        try:
-            data, samplerate = sf.read(str(audio_file))  # pyright: ignore[reportGeneralTypeIssues]
+        cache_key = str(audio_file)
 
-        except sf.LibsndfileError as e:
-            logger.exception("Failed to read audio file")
-            error = AudioFileCorruptedError(
-                f"Cannot read audio file: {audio_file.name}",
-                details={"path": str(audio_file), "error": str(e)},
-            )
-            self.console.print(f"[red]✗[/red] {error.message}")
-            self.console.print(f"[dim]💡 {error.suggestion}[/dim]")
-            return None
+        # Try cache first
+        if self.cache_enabled:
+            cached = self._cache.get(cache_key)
+            if cached:
+                data = cached.data.copy()  # Copy to avoid modifying cached data
+                samplerate = cached.samplerate
+                logger.debug(f"Cache hit for {audio_file.name}")
+            else:
+                # Load from disk and cache
+                try:
+                    data, samplerate = sf.read(str(audio_file))  # pyright: ignore[reportGeneralTypeIssues]
+                except sf.LibsndfileError as e:
+                    logger.exception("Failed to read audio file")
+                    error = AudioFileCorruptedError(
+                        f"Cannot read audio file: {audio_file.name}",
+                        details={"path": str(audio_file), "error": str(e)},
+                    )
+                    self.console.print(f"[red]✗[/red] {error.message}")
+                    self.console.print(f"[dim]💡 {error.suggestion}[/dim]")
+                    return None
+
+                # Cache the loaded audio (store original data)
+                cached_audio = CachedAudio(
+                    data=data.copy() if isinstance(data, np.ndarray) else np.array(data),
+                    samplerate=samplerate,
+                    size_bytes=data.nbytes if isinstance(data, np.ndarray) else 0,
+                    path=audio_file,
+                )
+                self._cache.put(cache_key, cached_audio)
+                logger.debug(f"Cached {audio_file.name}")
+        else:
+            # Load without caching
+            try:
+                data, samplerate = sf.read(str(audio_file))  # pyright: ignore[reportGeneralTypeIssues]
+
+            except sf.LibsndfileError as e:
+                logger.exception("Failed to read audio file")
+                error = AudioFileCorruptedError(
+                    f"Cannot read audio file: {audio_file.name}",
+                    details={"path": str(audio_file), "error": str(e)},
+                )
+                self.console.print(f"[red]✗[/red] {error.message}")
+                self.console.print(f"[dim]💡 {error.suggestion}[/dim]")
+                return None
 
         # Ensure data is in the correct format
         if len(data.shape) == 1:
@@ -395,3 +446,60 @@ class AudioManager:
 
         """
         return sd.get_stream().active if sd.get_stream() else False
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Cache Management Methods
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def preload_sounds(self, paths: list[Path]) -> int:
+        """Pre-load sounds into cache.
+
+        Args:
+            paths: List of paths to audio files
+
+        Returns:
+            Number of sounds successfully preloaded
+
+        """
+        if not self.cache_enabled:
+            logger.warning("Cache is disabled, skipping preload")
+            return 0
+        return self._cache.preload(paths)
+
+    def clear_cache(self) -> None:
+        """Clear the audio cache."""
+        self._cache.clear()
+        self.console.print("[green]✓[/green] Audio cache cleared")
+
+    @property
+    def cache_stats(self) -> dict[str, Any]:
+        """Get cache statistics.
+
+        Returns:
+            Dictionary with cache statistics
+
+        """
+        return self._cache.stats
+
+    def set_cache_enabled(self, enabled: bool) -> None:
+        """Enable or disable caching.
+
+        Args:
+            enabled: Whether to enable caching
+
+        """
+        self.cache_enabled = enabled
+        if not enabled:
+            self._cache.clear()
+        logger.info(f"Cache {'enabled' if enabled else 'disabled'}")
+
+    def set_cache_size(self, size_mb: int) -> None:
+        """Set the cache size limit.
+
+        Args:
+            size_mb: Maximum cache size in megabytes
+
+        """
+        # Create new cache with new size (clears existing cache)
+        self._cache = LRUAudioCache(max_size_bytes=size_mb * 1024 * 1024)
+        logger.info(f"Cache size set to {size_mb} MB")
